@@ -35,9 +35,8 @@ class Contact
     # Creates a new contact, adding it to the csv file, returning the new contact.
     # @param name [String] the new contact's name
     # @param email [String] the contact's email
-    def create(name, email, id)
-      new_id = CSV.read('contact_list.csv').length + 1
-      contact = self.new(name, email, new_id)
+    def create(name, email, id=CSV.read('contact_list.csv').length + 1)
+      contact = self.new(name, email, id)
       CSV.open('contact_list.csv', 'a') do |row|
         row << [contact.id, contact.name, contact.email]
       end
