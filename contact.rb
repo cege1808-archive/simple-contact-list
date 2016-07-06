@@ -1,78 +1,96 @@
-require 'csv'
+require 'pg'
+TABLE_NAME = 'contacts'
 
-# Represents a person in an address book.
-# The ContactList class will work with Contact objects instead of interacting with the CSV file directly
+#TODO make sure everything is an okay response
 class Contact
 
-  attr_accessor :name, :email, :id
+  attr_reader :id
+  attr_accessor :name, :email
   
-  # Creates a new contact object
-  # @param name [String] The contact's name
-  # @param email [String] The contact's email address
-  def initialize(name, email, id = nil)
-    @name = name
-    @email = email
-    @id = id
+  def initialize(params)
+    @id = params['id']
+    @name = params['name']
+    @email = params['email']
   end
 
   def to_s
     "#{id}: #{name} (#{email})"
   end
 
-  # Provides functionality for managing contacts in the csv file.
+  def is_saved?
+    @id != nil
+  end
+
+  def save
+    if is_saved?
+      res = Contact.connection.exec_params(
+        "UPDATE #{TABLE_NAME} 
+        SET name = $2, email = $3 WHERE id = $1 
+        RETURNING id, name, email;", 
+        [id, name, email])
+
+      #get the data from the database
+      @id = res[0]['id']
+      @name = res[0]['name']
+      @email = res[0]['email']
+
+    else
+      res = Contact.connection.exec_params(
+        "INSERT INTO #{TABLE_NAME} (name, email) 
+        VALUES ($1, $2) 
+        RETURNING id, name, email;", 
+        [name, email])
+
+      Contact.new(res[0])
+    end
+  end
+
+  def destroy
+    Contact.connection.exec_params("DELETE FROM #{TABLE_NAME} WHERE id = $1;", [id])
+  end
+
+
+  # Provides functionality for managing contacts in the database
   class << self
 
-    # Opens 'contacts.csv' and creates a Contact object for each line in the file (aka each contact).
-    # @return [Array<Contact>] Array of Contact objects
-    def all
-      contacts = []
-      CSV.foreach('contact_list.csv') do |row|
-        contacts << Contact.new(row[1], row[2], row[0])
-      end
-      contacts
+    # Connection 
+    def connection
+      @@connection = nil
+      # puts 'Connecting to the database...'
+      @@connection = @@connection || PG.connect(
+        host: 'localhost',
+        dbname: 'contacts',
+        user: 'development',
+        password: 'development')
     end
 
-    # Creates a new contact, adding it to the csv file, returning the new contact.
-    # @param name [String] the new contact's name
-    # @param email [String] the contact's email
-    def create(name, email, id=CSV.read('contact_list.csv').length + 1)
-      contact = self.new(name, email, id)
-      CSV.open('contact_list.csv', 'a') do |row|
-        row << [contact.id, contact.name, contact.email]
+    # Display everything in the database
+    def all
+      res = self.connection.exec_params(
+        "SELECT * FROM #{TABLE_NAME}")
+      res.map do |row|
+        Contact.new(row)
       end
-      contact
     end
-    
-    # Find the Contact in the 'contacts.csv' file with the matching id.
-    # @param id [Integer] the contact id
-    # @return [Contact, nil] the contact with the specified id. If no contact has the id, returns nil.
+
+    # Find contacts by id
     def find(id)
-      CSV.foreach('contact_list.csv') do |row|
-        if row[0] == id
-          return Contact.new(row[1], row[2], row[0])
-        end
-      end
+      res = self.connection.exec_params(
+        "SELECT * FROM #{TABLE_NAME} 
+        WHERE id = $1::int;",[id])
+      return nil if res.num_tuples == 0
+      Contact.new(res[0])
     end
     
     # Search for contacts by either name or email.
-    # @param term [String] the name fragment or email fragment to search for
-    # @return [Array<Contact>] Array of Contact objects.
     def search(term)
-      all_rows = CSV.read('contact_list.csv')
-      result_rows = all_rows.find_all do |row|
-        row.any? do |word|
-          word.include?(term)
-        end
+      res = self.connection.exec_params(
+        "SELECT * FROM #{TABLE_NAME} 
+        WHERE (name LIKE '%' || $1 || '%') OR 
+        (email LIKE '%' || $1 || '%');",[term])
+      res.map do |row|
+        Contact.new(row)
       end
-      result_rows.map do |row|
-        Contact.new(row[1], row[2], row[0])
-      end
-
-      # # CSV.foreach('contact_list.csv').with_index(1) do |row, index|
-        
-      # end
-      # "NOT FOUND!"
-      # # TODO: Select the Contact instances from the 'contacts.csv' file whose name or email attributes contain the search term.
     end
 
   end
