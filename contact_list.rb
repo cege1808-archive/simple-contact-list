@@ -1,5 +1,6 @@
+require 'pry' 
+require 'active_record'
 require_relative 'contact'
-
 # Interfaces between a user and their contact list. Reads from and writes to standard I/O.
 class ContactList
   
@@ -20,6 +21,19 @@ class ContactList
   end
   
   def initialize
+    ActiveRecord::Base.logger = Logger.new(STDOUT)
+
+    puts 'Establishing connection to database ...'
+    ActiveRecord::Base.establish_connection(
+      adapter: 'postgresql',
+      database: 'contacts',
+      username: 'development',
+      password: 'development',
+      host: 'localhost',
+      port: 5432
+    )
+
+    puts 'CONNECTED'
     display_mainmenu
   end
 
@@ -28,7 +42,7 @@ class ContactList
     case ARGV[0]
       when "list"
         contacts = Contact.all
-        puts contacts
+        pp contacts
         display_total_records(contacts.count)
 
       when "new"
@@ -39,7 +53,7 @@ class ContactList
 
         res = Contact.new({'name' => new_name, 'email' => new_email})
         contact = res.save
-        puts contact
+        pp contact
 
       when "update"
         the_contact = Contact.find(ARGV[1])
@@ -65,7 +79,7 @@ class ContactList
 
       when "search"
         search_results = Contact.search(ARGV[1])
-        puts search_results
+        pp search_results
         display_total_records(search_results.count)
 
       when "delete"
